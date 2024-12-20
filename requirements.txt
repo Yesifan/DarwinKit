@@ -1,0 +1,17 @@
+click
+tqdm
+nnviz
+numpy
+python-multipart
+uvicorn[standard]
+aiofiles>=24.1.0,<25.0.0
+datasets>=3.0.2,<4.0.0
+matplotlib>=3.9.2,<4.0.0
+tokenizers>=0.20.1, <0.21.0
+tensorboard>=2.18.0, <3.0.0
+transformers>=4.46.0,<5.0.0
+scipy>=1.13.1,<2.0.0
+spikingjelly>=0.0.0.0.14,<1.0.0
+fastapi>=0.115.0,<1.0.0
+einops>=0.8.0,<1.0.0
+lightning>=2.4.0,<3.0.0

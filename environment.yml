@@ -1,0 +1,13 @@
+name: darkit
+channels:
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - cupy=13.3
+  - ninja=1.12
+  - cuda-toolkit=12.2
+  - cuda-nvcc=12.2
+  - cuda-compiler=12.2
+  - pygraphviz=1.11
