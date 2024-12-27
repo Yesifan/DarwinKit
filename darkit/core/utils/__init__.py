@@ -11,8 +11,8 @@ from .csv_logger import CSVLogger
 __all__ = ["CSVLogger"]
 
 
-DSPIKE_LLM_HOME = os.environ.get("DSPIKE_LLM_HOME", "~/.cache/DspikeLLM")
-HOME_PATH = os.path.expanduser(DSPIKE_LLM_HOME)
+DARWIN_KIT_HOME = os.environ.get("DARWIN_KIT_HOME", "~/.cache/darwinkit")
+HOME_PATH = os.path.expanduser(DARWIN_KIT_HOME)
 MODEL_PATH = Path(HOME_PATH) / "models"
 DATASET_PATH = Path(HOME_PATH) / "datasets"
 

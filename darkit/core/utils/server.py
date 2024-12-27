@@ -3,9 +3,9 @@ import sys
 import uvicorn
 import multiprocessing
 from pathlib import Path
-from ..utils import DSPIKE_LLM_HOME
+from ..utils import DARWIN_KIT_HOME
 
-SERVER_LOG_PATH = Path(os.path.expanduser(DSPIKE_LLM_HOME)) / "server.log"
+SERVER_LOG_PATH = Path(os.path.expanduser(DARWIN_KIT_HOME)) / "server.log"
 
 
 def start_uvicorn_server(port: int, daemon: bool):

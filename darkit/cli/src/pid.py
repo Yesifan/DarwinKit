@@ -1,8 +1,8 @@
 import os
 from pathlib import Path
-from darkit.core.utils import DSPIKE_LLM_HOME
+from darkit.core.utils import DARWIN_KIT_HOME
 
-PID_FILE = Path(os.path.expanduser(DSPIKE_LLM_HOME)) / ".server.pid"
+PID_FILE = Path(os.path.expanduser(DARWIN_KIT_HOME)) / ".server.pid"
 
 
 def save_pid(pid):
