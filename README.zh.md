@@ -32,7 +32,7 @@ pip install -r requirements.txt
   ```
 #### 注意事项
 - 运行 `npm run dev` 时需要注意 `vite.config.ts` 中的 `server.proxy` 配置， 应该确保与你启动的 `FastAPI` 服务地址一致。
-- 如果出现 *Couldn't import the plugin "https://cdn.jsdelivr.net/npm/@inlang/message-lint-rule-without-source@latest/dist/index.js"* 类似的错误，可能是你的网络无法访问 `cdn.jsdelivr.net`，请自行寻找代理或者加速节点并在 `project.inlang/settings.json` 中进行替换。
+- 如果出现 *Couldn't import the plugin "https://xxxxxxxxx.xxx/xxxxxxxxxxxx"* 类似的错误，可能是你的网络无法访问 `cdn.jsdelivr.net`，请自行寻找代理或者加速节点并在 `project.inlang/settings.json` 中进行替换。
 
 ### 单元测试
 #### 编写单元测试
