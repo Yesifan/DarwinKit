@@ -1,11 +1,9 @@
-import lightning as L
-from lightning.fabric.strategies.ddp import DDPStrategy
 import torch
+from tqdm import tqdm
 from torch.utils.data import DataLoader
 from transformers import get_scheduler, PreTrainedTokenizer, PreTrainedTokenizerFast
-from tqdm import tqdm
-from typing import Union
 from spikingjelly.activation_based import functional
+from typing import Union
 
 from darkit.core.utils.dataset import create_tokenized_bert_dataset
 from darkit.core.utils.dataset.data_collator import MaskDataCollatorWithPadding
@@ -24,38 +22,24 @@ class Trainer(BaseTrainer):
         config: TrainerConfig,
         **kwargs,
     ):
-        process_group_backend = kwargs.get("process_group_backend", "nccl")
-        self.fabric = L.Fabric(
-            devices=config.device_num,  # 这个变量名和其他类是反过来的。注意一下
-            accelerator=config.device,
-            strategy=DDPStrategy(process_group_backend=process_group_backend),
-        )
         super().__init__(model, tokenizer, config, **kwargs)
-        self.model = model
-        self.tokenizer = tokenizer
-        self.config = config
-        model.resize_token_embeddings(len(tokenizer))
+        self.model.resize_token_embeddings(len(tokenizer))
 
         self.max_step = config.max_train_steps
         self.current_step = 0
         self.save_step_interval = config.save_step_interval
 
-    def _is_master_process(self):
-        return self.fabric.is_global_zero
-
     def _save_model(self, checkpoint="complete"):
-        """
-        model save {model, model_class, current_step}
-        """
+        # 使用 fabric 保存模型
         if self.save_directory:
             save_path = self.save_directory / f"{checkpoint}.pth"
             self.fabric.save(
                 save_path,
                 {
-                    "model": self.model,
                     "model_class": self.model.__class__.__name__,
+                    "state_dict": self.model,
+                    "optimizer_state_dict": self.optimizer,
                     "current_step": self.current_step,
-                    "optimizer": self.optimizer,
                 },
             )
 
@@ -111,38 +95,43 @@ class Trainer(BaseTrainer):
         )
 
     def train(self, train_dataset, val_dataset=None):
-        fabric, tconfig = self.fabric, self.config
-        max_train_steps = tconfig.max_train_steps
-
-        fabric.launch()
-
-        model = fabric.setup(self.model)
-        learner = Learner(model)
+        self.fabric.launch()
 
         optimizer = self._get_optimizer()
-        self.optimizer = fabric.setup_optimizers(optimizer)
+
+        # 恢复权重
+        if self.resume:
+            model, optimizer, resume_step = self._load_checkpoint(self.model, optimizer)
+            # 如果是从上一个 checkpoint 恢复， 则跳过已经训练过的步数
+            if self.resume_key == self.config.name:
+                self.current_step = resume_step
+
+        model = self.fabric.setup(self.model)
+        self.optimizer = self.fabric.setup_optimizers(optimizer)
         lr_scheduler = self._get_scheduler(optimizer)
+        learner = Learner(model)
 
         train_dataloader = self._create_dataloader(
             train_dataset, self.config.batch_size
         )
-        train_dataloader = fabric.setup_dataloaders(train_dataloader)
+        train_dataloader = self.fabric.setup_dataloaders(train_dataloader)
         val_dataloader = None
         if val_dataset is not None:
             val_dataloader = self._create_dataloader(
                 val_dataset, self.config.val_batch_size
             )
-            val_dataloader = fabric.setup_dataloaders(val_dataloader)
+            val_dataloader = self.fabric.setup_dataloaders(val_dataloader)
 
-        pbar = tqdm(enumerate(train_dataloader), total=max_train_steps, desc="Training")
-        for step, batch in pbar:
-            if step >= max_train_steps:
+        max_train_steps = self.config.max_train_steps
+        pbar = tqdm(train_dataloader, total=max_train_steps, desc="Training")
+        for batch in pbar:
+            if self.current_step >= max_train_steps:
                 break
-            with fabric.no_backward_sync(model):
+            with self.fabric.no_backward_sync(model):
                 loss_dict = learner(batch)
                 loss = loss_dict["total_loss"]
                 real_loss_ = loss_dict["real_loss"].mean()
-                fabric.backward(loss)
+                self.fabric.backward(loss)
             optimizer.step()
             lr_scheduler.step()
             functional.reset_net(model)
@@ -151,7 +140,7 @@ class Trainer(BaseTrainer):
 
             self.log(
                 LogFieldnames(
-                    step=step,
+                    step=self.current_step,
                     train_loss=loss.item(),
                 )
             )

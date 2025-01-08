@@ -3,18 +3,16 @@
 ########################################################################################################
 import math
 import torch
-import lightning as L
 from tqdm.auto import tqdm
 from torch.utils.data.dataloader import DataLoader
 from spikingjelly.activation_based import functional
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 from typing import Union
-from lightning.fabric.strategies.ddp import DDPStrategy
-from darkit.core.utils.dataset import create_tokenized_gpt_dataset
 
 from .model import GPT as SpikeGPT
 from .config import TrainerConfig
 from ...main import Trainer as BaseTrainer, LogFieldnames
+from darkit.core.utils.dataset import create_tokenized_gpt_dataset
 
 
 class Trainer(BaseTrainer):
@@ -25,11 +23,6 @@ class Trainer(BaseTrainer):
         config: TrainerConfig,
         **kwargs,
     ):
-        self.fabric = L.Fabric(
-            devices=config.num_device,
-            accelerator=config.device,
-            strategy=DDPStrategy(process_group_backend="nccl"),
-        )  # fabric 需要先初始化
         super().__init__(model, tokenizer, config, **kwargs)
         # import wandb  # comment this if you don't have wandb
         # print('logging to wandb... (comment it if you don\'t have wandb)')
@@ -52,9 +45,6 @@ class Trainer(BaseTrainer):
         self.max_step = config.max_epochs
         self.current_step = 0
         self.save_step_interval = config.epoch_save_frequency
-
-    def _is_master_process(self):
-        return self.fabric.is_global_zero
 
     def _create_dataloader(self, dataset, batch_size):
         ctx_len = self.model.config.ctx_len
@@ -84,7 +74,7 @@ class Trainer(BaseTrainer):
             tqdm(
                 enumerate(loader),
                 total=epoch_length_fixed,
-                disable=(torch.cuda.current_device() != 0),
+                disable=not self._is_master_process(),
             )
             if is_train
             else tqdm(enumerate(loader))
@@ -154,7 +144,7 @@ class Trainer(BaseTrainer):
                     factor = 1 / (it + 1)
                     self.avg_loss = self.avg_loss * (1.0 - factor) + now_loss * factor
                 pbar.set_description(
-                    f"epoch {self.current_step}/{self.max_step}: ppl {math.exp(self.avg_loss):.2f} loss {self.avg_loss:.4f} lr {lr:e}"
+                    f"epoch {self.current_step+1}/{self.max_step}: ppl {math.exp(self.avg_loss):.2f} loss {self.avg_loss:.4f} lr {lr:e}"
                 )
             else:
                 dev_loss_all += loss.item()
@@ -162,21 +152,34 @@ class Trainer(BaseTrainer):
             self.dev_loss = dev_loss_all / len(loader)
 
     def train(self, train_dataset, valid_dataset=None, is_train=True):
-        fabric = self.fabric
-        fabric.launch()
-        fabric.seed_everything(3407)
+        self.fabric.launch()
+        self.fabric.seed_everything(3407)
 
-        model, config = self.model, self.config
-        raw_model = model.module if hasattr(self.model, "module") else model
-        optimizer = raw_model.configure_optimizers(config)
-        model = fabric.setup(raw_model)
-        optimizer = fabric.setup_optimizers(optimizer)
+        raw_model = self.model.module if hasattr(self.model, "module") else self.model
+        optimizer = raw_model.configure_optimizers(self.config)
+
+        # 如果指定了 resume， 则读取 checkpoint 的权重
+        if self.resume:
+            model, optimizer, resume_step = self._load_checkpoint(raw_model, optimizer)
+            # 如果是从上一个 checkpoint 恢复， 则跳过已经训练过的步数
+            print(f"resume_key: {self.resume_key}, config.name: {self.config.name}")
+            if self.resume_key == self.config.name:
+                print(f"resume_step: {resume_step}")
+                self.current_step = resume_step
+                self.steps = self.current_step * (
+                    len(train_dataset) / self.config.batch_size
+                )
+
+        model = self.fabric.setup(raw_model)
+        self.optimizer = self.fabric.setup_optimizers(optimizer)
 
         dataset = train_dataset
 
         self.tokens = 0  # counter used for learning rate decay
-        for epoch in range(config.max_epochs):
-            self._run_epoch(model, optimizer, dataset, is_train)
+        for epoch in range(self.config.max_epochs):
+            if self.current_step >= self.max_step:
+                break
+            self._run_epoch(model, self.optimizer, dataset, is_train)
             self._auto_save_pretrained()
             self.current_step += 1
 

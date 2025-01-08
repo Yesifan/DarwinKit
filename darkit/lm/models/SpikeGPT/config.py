@@ -84,7 +84,7 @@ class TrainerConfig(BaseTrainerConfig):
     lr_decay: bool = True  # linear warmup followed by cosine decay
     warmup_tokens: int = 0
     final_tokens: int = 0
-    num_device: int = 1  # number of devices. eg. 1 for single GPU, 2 for two GPUs
+    device_num: int = 1  # number of devices. eg. 1 for single GPU, 2 for two GPUs
     num_workers: int = 0  # for DataLoader
     lr_final: float = 1e-5
     epoch_save_frequency: int = 0
@@ -169,7 +169,7 @@ SPIKEGPT_CONFIG_COMMENT = {
         "description": "Total number of tokens processed, used for learning rate decay calculation.",
         "range": "Non-negative integer, typically 0 or tens of millions to billions",
     },
-    "num_device": {
+    "device_num": {
         "description": "Number of devices used, e.g., 1 for a single GPU, 2 for two GPUs.",
         "range": "Positive integer, depending on available hardware",
     },
