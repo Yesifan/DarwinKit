@@ -332,23 +332,19 @@ class Trainer:
         """
         根据 Train 的相关参数，控制训练时的自动保存逻辑。
         """
-        max_step, current_step, save_step_interval = (
-            self.max_step,
-            self.current_step,
-            self.save_step_interval,
-        )
-
-        current_step_idx = current_step + 1
+        current_step_idx = self.current_step + 1
+        # 如果设置 save_step_interval 为 0，则不保存 checkpoint
         if self.save_step_interval > 0:
+            # 当当前步数（current_step_idx）为 max_step 或者是 save_step_interval 的倍数时保存模型
             if (
-                current_step_idx == max_step
-                or current_step_idx % save_step_interval == 0
+                current_step_idx == self.max_step
+                or current_step_idx % self.save_step_interval == 0
             ):
                 check_poinent = f"iter-{current_step_idx}-ckpt"
                 self.save_pretrained(check_poinent=check_poinent)
                 if self.save_directory:
                     print(
-                        f"Model saved epoch {current_step_idx}/{max_step} at {check_poinent}"
+                        f"Model saved epoch {current_step_idx}/{self.max_step} at {check_poinent}"
                     )
 
     def _auto_validate(self, val_dataloader):
@@ -407,7 +403,6 @@ class FabricTrainer(Trainer):
         if self.save_directory:
             save_path = self.save_directory / f"{checkpoint}.pth"
             current_step_idx = self.current_step + 1
-            print("current_step_idx", current_step_idx)
             save_dict = {
                 "model_class": self.model.__class__.__name__,
                 "state_dict": self.model,

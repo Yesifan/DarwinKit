@@ -125,7 +125,7 @@ class Trainer(BaseTrainer):
         max_train_steps = self.config.max_train_steps
         pbar = tqdm(train_dataloader, total=max_train_steps, desc="Training")
         for batch in pbar:
-            if self.current_step >= max_train_steps:
+            if self.current_step >= self.config.max_train_steps:
                 break
             with self.fabric.no_backward_sync(model):
                 loss_dict = learner(batch)

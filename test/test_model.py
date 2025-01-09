@@ -37,7 +37,7 @@ class TestSpikeGPT(unittest.TestCase):
             max_epochs=1,
             epoch_length_fixed=100,
             batch_size=2,
-            epoch_save_frequency=1,
+            save_step_interval=1,
         )
         with Trainer(model, tokenizer=tokenizer, config=tconf) as trainer:
             trainer.train(train_dataset=wikitext_train)
@@ -246,10 +246,9 @@ class TestTrainerResume(unittest.TestCase):
         tconf = TrainerConfig(
             name=self.model_name,
             device=device,
-            max_epochs=1,
-            epoch_length_fixed=100,
             batch_size=2,
-            epoch_save_frequency=1,
+            max_step=100,
+            save_step_interval=100,
         )
         with Trainer(model, tokenizer=tokenizer, config=tconf) as trainer:
             trainer.train(train_dataset=wikitext_train)
@@ -273,10 +272,9 @@ class TestTrainerResume(unittest.TestCase):
         tconf2 = TrainerConfig(
             name=self.model_name,
             device=device,
-            max_epochs=2,
-            epoch_length_fixed=100,
             batch_size=2,
-            epoch_save_frequency=1,
+            max_step=200,
+            save_step_interval=100,
         )
         with Trainer(
             model, tokenizer=tokenizer, config=tconf2, resume=self.model_name

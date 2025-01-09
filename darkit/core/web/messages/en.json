@@ -26,6 +26,7 @@
     "startPredict": "Start Predicting",
     "cxtLenTooltip": "Context length. The maximum sequence length that the model can consider when processing the input sequence.",
     "promptTooltip": "The prompt to use for generation.",
+    "resumeTooltip": "Resume training from the model checkpoint, Ex: mymodel or mymodel:epoch-1.",
     "modelVisualHead": "Select the model for which you want to view details.",
     "showDetails": "Show Details",
     "mDeleteModel": "Delete Model",

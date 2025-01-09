@@ -73,9 +73,8 @@ class TrainerConfig(BaseTrainerConfig):
     device: str = "cuda"
     name: str = "SpikeGPT"
     model_type: str = "RWKV"
-    max_epochs: int = 1
-    epoch_length_fixed: int = 2000
-    batch_size: int = 8
+    batch_size: int = 2
+    max_step: int = 100
     learning_rate: float = 4e-4
     beta1: float = 0.9
     beta2: float = 0.99
@@ -87,7 +86,7 @@ class TrainerConfig(BaseTrainerConfig):
     device_num: int = 1  # number of devices. eg. 1 for single GPU, 2 for two GPUs
     num_workers: int = 0  # for DataLoader
     lr_final: float = 1e-5
-    epoch_save_frequency: int = 0
+    save_step_interval: int = 100
 
     @property
     def betas(self):
