@@ -1,5 +1,6 @@
 # Project ignores
 darkit/tmp
+test/test_datasets_temp
 
 
 # Created by .ignore support plugin (hsz.mobi)

@@ -26,6 +26,7 @@
     "startPredict": "开始预测",
     "cxtLenTooltip": "上下文长度。模型在处理输入序列时所能考虑的最大序列长度",
     "promptTooltip": "输入的提示词，模型将根据提示词生成后续文本",
+    "resumeTooltip": "从指定模型检查点恢复训练，Ex: mymodel or mymodel:epoch-1",
     "modelVisualHead": "选择您想要查看其详细信息的模型。",
     "showDetails": "查看详情",
     "mDeleteModel": "删除模型",

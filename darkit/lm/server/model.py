@@ -2,12 +2,13 @@ import traceback
 import threading
 import subprocess
 from pydantic import BaseModel
-from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
-from fastapi.exceptions import HTTPException
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse, PlainTextResponse
 
 from darkit.cli.src.generate import CLI_NAME, dict_to_cmd_args
 from ..utils import MODEL_PATH
+
+from typing import Optional
 
 # 创建一个 APIRouter 实例
 router = APIRouter()
@@ -39,32 +40,53 @@ def model_train(body: StartTrainBody):
 
 class TrainData(BaseModel):
     type: str
-    fork: str
+    fork: Optional[str]
+    resume: Optional[str]
     dataset: str
     tokenizer: str
     m_conf: dict
     t_conf: dict
 
 
-@router.post("/v2/model/train/")
-def model_train_2(body: TrainData):
+def get_command(body: TrainData):
     fork = body.fork
 
+    m_conf_str = dict_to_cmd_args(body.m_conf)
+    t_conf_str = dict_to_cmd_args(body.t_conf)
+    fork_command = f"--fork {fork}" if fork is not None and fork != "" else ""
+    resume_command = (
+        f"--resume {body.resume}"
+        if body.resume is not None and body.resume != ""
+        else ""
+    )
+    command = f"{CLI_NAME} lm train {fork_command} --tokenizer {body.tokenizer} --dataset {body.dataset} {resume_command} {body.type} {m_conf_str} {t_conf_str}"
+    return command
+
+
+@router.post("/model/train/command")
+def get_command_api(body: TrainData):
+    command = get_command(body)
+    return PlainTextResponse(command)
+
+
+@router.post("/v2/model/train/")
+def model_train_2(body: TrainData):
+    resume = body.resume
     name = body.t_conf.get("name")
     if name is None or name == "":
         raise HTTPException(status_code=400, detail="Model name is required")
-    if (MODEL_PATH / name).exists():
+    # 如果是恢复训练则模型已存在也可以继续进行训练
+    resume_key = resume.split(":")[0] if resume and ":" in resume else resume
+    if name != resume_key and (MODEL_PATH / name).exists():
         raise HTTPException(status_code=400, detail="Model name already exists")
     if task_lock.locked():
         raise HTTPException(status_code=400, detail="Task is already running")
     try:
-        m_conf_str = dict_to_cmd_args(body.m_conf)
-        t_conf_str = dict_to_cmd_args(body.t_conf)
-        fork_command = f"--fork {fork}" if fork is not None and fork != "" else ""
-        command = f"{CLI_NAME} lm train {fork_command} --tokenizer {body.tokenizer} --dataset {body.dataset} {body.type} {m_conf_str} {t_conf_str}"
+        command = get_command(body)
 
         print("Start training with command: ")
         print(command)
+        # TODO: 对输出进行保存
         process = subprocess.Popen(
             command,
             shell=True,

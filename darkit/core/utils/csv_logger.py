@@ -1,16 +1,17 @@
 import csv
 from pathlib import Path
-from typing import Any, Collection, Union
+from typing import Any, Collection
 from dataclasses import asdict
 
 
 class CSVLogger:
-    def __init__(self, filename: Union[str, Path], fieldnames: Collection[Any]):
+    def __init__(self, filename: Path, fieldnames: Collection[Any]):
         self.filename = filename
         self.fieldnames = fieldnames
-        self.file = open(filename, "w")
+        self.file = open(filename, "a")
         self.writer = csv.DictWriter(self.file, fieldnames=fieldnames)
-        self.writer.writeheader()
+        if self.file.tell() == 0:
+            self.writer.writeheader()
 
     def log(self, data):
         if hasattr(data, "__dataclass_fields__"):

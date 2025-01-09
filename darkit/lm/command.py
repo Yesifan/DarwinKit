@@ -98,12 +98,17 @@ def predict(model_type: str, model_name: str, prompt: str, device: str, ctx_len:
     default=DATASET_LIST[0] if DATASET_LIST else "None",
 )
 @click.option(
+    "--resume",
+    type=str,
+    default=None,
+)
+@click.option(
     "--fork",
     type=str,
     default=None,
 )
 @click.pass_context
-def train(ctx, tokenizer, dataset, fork):
+def train(ctx, tokenizer, dataset, resume, fork):
     """
     Train SNN Language Model.
     """
@@ -117,6 +122,7 @@ def train(ctx, tokenizer, dataset, fork):
 
     ctx.obj["dataset"] = train_dataset
     ctx.obj["tokenizer"] = tokenizer
+    ctx.obj["resume"] = resume
     ctx.obj["fork"] = fork
 
 
@@ -150,8 +156,7 @@ def create_train_command(key: str, model_option: dict, trainer_option: dict):
 
         mconf.vocab_size = tokenizer.vocab_size
         if key == "SpikeGPT":
-            dataset_len = len(dataset)
-            tconf.final_tokens = dataset_len * tconf.max_epochs
+            tconf.final_tokens = tconf.max_step
 
         model = Model(mconf).to(tconf.device)
 
@@ -163,10 +168,13 @@ def create_train_command(key: str, model_option: dict, trainer_option: dict):
             if addon_path.exists():
                 load_model_from_addon(model, addon_path)
 
+        resume = ctx.obj["resume"]
         # with 语句确保了 Trainer 实例在进入和退出代码块时分别调用 __enter__ 和 __exit__ 方法
         # __enter__ 方法会调用 __init_pid___ ，在当前目录下生成一个 pid 文件，用于记录训练进程的 pid
         # __exit__ 方法会调用 __del_pid__，删除该文件
-        with Trainer(model, config=tconf, tokenizer=tokenizer, fork=fork) as trainer:
+        with Trainer(
+            model, config=tconf, tokenizer=tokenizer, resume=resume, fork=fork
+        ) as trainer:
             try:
                 trainer.train(dataset)
             except Exception as e:

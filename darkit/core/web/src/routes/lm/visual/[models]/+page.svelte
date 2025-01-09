@@ -2,6 +2,7 @@
 	import type { ModelDetail } from '$lib/apis/lm';
 </script>
 
+<!-- #TODO: RESUME 适配 -->
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
 	import { onDestroy, onMount } from 'svelte';
