@@ -4,6 +4,7 @@ python -m twine upload dist/*
 """
 
 import os
+import subprocess
 from setuptools import setup, find_packages
 from darkit.core.utils import PWA_PATH
 
@@ -18,23 +19,12 @@ def read_version():
     return "0.0.1"
 
 
-def update_models_options():
-    from darkit.core.lib.options import save_models_metadata
-
-    try:
-        from darkit.lm.models import Metadata as lm_metadata
-
-        save_models_metadata("lm", lm_metadata)
-        print("Updated models options for lm.")
-    except Exception as e:
-        print(f"Error loading lm.models: {e}")
-
-
 if not PWA_PATH.exists():
     print(f"Warning: PWA build not found at {PWA_PATH}")
     exit(1)
 
-update_models_options()
+# 执行 init.py 文件
+subprocess.run(["python", "init.py"], check=True)
 
 with open("./requirements.txt", "r", encoding="utf-8") as fh:
     install_requires = fh.read()

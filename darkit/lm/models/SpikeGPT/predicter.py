@@ -23,8 +23,8 @@ class SpikeGPTPredicter(BasePredicter):
         config_dict = cls.get_model_config_json(name)
         config = GPTConfig(**config_dict)
         model = GPT(config)
-        pth_dict = torch.load(checkpoint_path, weights_only=True)
-        model.load_state_dict(pth_dict.get("model"))
+        ckpt = torch.load(checkpoint_path, weights_only=True)
+        model.load_state_dict(ckpt.get("state_dict"))
         return model
 
 
@@ -48,7 +48,7 @@ class RWKVRNNPredicter(BasePredicter):
         config_dict = cls.get_model_config_json(name)
         config = RWKVConfig(**config_dict)
         pth_dict = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
-        model = RWKV_RNN(config, pth_dict.get("model"))
+        model = RWKV_RNN(config, pth_dict.get("state_dict"))
         return model
 
     def _predict(self, ctx, state=None, mem1=None, mem2=None, preprocess_only=False):

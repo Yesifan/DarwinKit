@@ -31,8 +31,8 @@ class SpikeLMPredicter(BasePredicter):
         checkpoint_path = cls.get_checkpoint(name, checkpoint)
         config = cls.get_model_config(name)
         model = SpikeBertForPreTraining(config)
-        checkpoint_dict = torch.load(checkpoint_path, weights_only=True)
-        model.load_state_dict(checkpoint_dict["model"], strict=True)
+        ckpt = torch.load(checkpoint_path, weights_only=True)
+        model.load_state_dict(ckpt["state_dict"], strict=True)
         return model
 
     def _predict(self, ctx):

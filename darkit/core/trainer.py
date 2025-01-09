@@ -8,7 +8,9 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Optional
 
-from .utils import MODEL_PATH, CSVLogger, get_local_ip
+
+from .lib.inject import inject_script
+from .utils import MODEL_PATH, CSVLogger, get_local_ip, model as model_utils
 
 
 @dataclass
@@ -24,7 +26,7 @@ class TrainerConfig:
     model_type = "RWKV"
     device = None
     max_step = 100
-    num_device = 1
+    device_num = 1
     num_workers = 0  # for DataLoader
 
     # 模型评估设置
@@ -38,7 +40,9 @@ class TrainerConfig:
 class Trainer:
     """
     kwargs:
-        - enable_server: 是否启动可视化服务
+        - fork (str): 从分叉模型开始训练
+        - resume (str): 从指定 checkpoint 读取权重继续训练, example: key:checkpoint
+        - enable_server (bool): 是否启动可视化服务
     """
 
     _visual_series = {"train_loss": ["step", "train_loss"]}
@@ -50,10 +54,18 @@ class Trainer:
         **kwargs,
     ):
 
-        self.model = model
+        self.model = model.to(config.device)
         self.device = config.device
         self.config = config
         self.fork = kwargs.get("fork", None)
+
+        # 恢复模型设置
+        self.resume = kwargs.get("resume", None)
+        if self.resume:
+            if ":" in self.resume:
+                self.resume_key, self.resume_ckpt = self.resume.split(":")
+            else:
+                self.resume_key, self.resume_ckpt = self.resume, None
 
         # 模型评估设置
         self.eval_iters = getattr(self, "eval_iters", config.eval_iters)
@@ -68,31 +80,35 @@ class Trainer:
             self, "save_step_interval", config.save_step_interval
         )
 
-        self.__init_save_file__()
+        self._init_save_file()
 
+        # 初始化 logger
         log_fieldnames_cls = kwargs.get("log_fieldnames", LogFieldnames)
         log_fieldnames = [field.name for field in fields(log_fieldnames_cls)]
-        self.__init_logger__(log_fieldnames)
+        self._init_logger(log_fieldnames)
 
-        self.__start_server__(**kwargs)
+        # 加载分叉模型的修改代码
+        self._inject_fork_script()
+
+        self.__start_server(**kwargs)
 
     def _is_master_process(self):
         return True
 
-    def __init_pid__(self):
+    def __init_pid(self):
         # 将当前进程的 pid 写入文件
         pid = os.getpid()
         if self.save_directory:
             with open(self.save_directory / "pid", "w") as f:
                 f.write(f"{pid}")
 
-    def __del_pid__(self):
+    def __del_pid(self):
         if self.save_directory:
             pid_file = self.save_directory / "pid"
             if pid_file.exists():
                 os.remove(pid_file)
 
-    def __init_save_file__(self):
+    def _init_save_file(self):
         if self.save_directory:
             if not os.path.exists(self.save_directory):
                 os.makedirs(self.save_directory)
@@ -103,18 +119,35 @@ class Trainer:
             else:
                 raise ValueError(f"Model {self.save_directory} already exists")
 
-    def __init_logger__(self, log_fieldnames):
+    def _init_logger(self, log_fieldnames):
         if self.save_directory and log_fieldnames:
             filename = self.save_directory / "train_log.csv"
             self.csv_logger = CSVLogger(filename=filename, fieldnames=log_fieldnames)
             print(f"Logger initialized at {filename}")
+
+    def _get_checkpoint_path(self):
+        key_path = self.root / self.resume_key
+        return model_utils.get_checkpoint(key_path, self.resume_ckpt)
+
+    def _load_checkpoint(self, model: nn.Module, optimizer: torch.optim.Optimizer):
+        """将 checkpoint 加载到模型中"""
+        if self.resume:
+            print(f"Model loaded from {self.resume}")
+            checkpoint_path = self._get_checkpoint_path()
+            checkpoint = torch.load(checkpoint_path, map_location=self.device)
+
+            model.load_state_dict(checkpoint["state_dict"])
+            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+
+            return model, optimizer, checkpoint["current_step"]
+        return model, optimizer, self.current_step
 
     def log_exception(self, e):
         if self.save_directory:
             with open(self.save_directory / "exception.log", "w") as f:
                 f.write(str(e))
 
-    def __start_server__(self, **kwargs):
+    def __start_server(self, **kwargs):
         self._enabel_server = kwargs.get("enable_server", False)
         self.server_prot = kwargs.get("server_prot", 8000)
         if self._enabel_server:
@@ -129,11 +162,11 @@ class Trainer:
             print(f"Server started at http://{self._local_ip}:{self.server_prot}")
 
     def __enter__(self):
-        self.__init_pid__()
+        self.__init_pid()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.__del_pid__()
+        self.__del_pid()
 
     _subclasses = dict()
 
@@ -163,10 +196,14 @@ class Trainer:
             return super().__new__(cls)
 
     @property
+    def root(self) -> Path:
+        return MODEL_PATH
+
+    @property
     def save_directory(self) -> Optional[Path]:
         model_name = self.config.name
         if model_name is not None and self._is_master_process():
-            save_directory = MODEL_PATH / model_name
+            save_directory = self.root / model_name
             return save_directory
         else:
             return None
@@ -174,7 +211,7 @@ class Trainer:
     @property
     def fork_directory(self) -> Optional[Path]:
         if self.fork:
-            return MODEL_PATH / self.fork
+            return self.root / "fork" / self.fork
         else:
             return None
 
@@ -207,7 +244,7 @@ class Trainer:
             return None
 
     @property
-    def model_copy_path(self) -> Optional[Path]:
+    def model_code_archive_path(self) -> Optional[Path]:
         if self.save_directory:
             return self.save_directory / "model.py"
         else:
@@ -225,19 +262,21 @@ class Trainer:
             # if self.csv_logger is not None:
             self.csv_logger.log(data)
 
-    def _save_model(self, check_poinent="complete"):
+    def _save_model(self, checkpoint="complete"):
         """
-        model save {model, model_class, current_step}
+        Save the model state, optimizer state, and current step.
         """
         if self.save_directory:
-            torch.save(
-                {
-                    "model": self.model.state_dict(),
-                    "model_class": self.model.__class__.__name__,
-                    "current_step": self.current_step,
-                },
-                self.save_directory / f"{check_poinent}.pth",
-            )
+            current_step_idx = self.current_step + 1
+            save_path = self.save_directory / f"{checkpoint}.pth"
+            save_dict = {
+                "model_class": self.model.__class__.__name__,
+                "state_dict": self.model.state_dict(),
+                "current_step": current_step_idx,
+            }
+            if hasattr(self, "optimizer"):
+                save_dict["optimizer_state_dict"] = self.optimizer.state_dict()
+            torch.save(save_dict, save_path)
 
     def _save_model_config(self):
         if self.modle_config_save_path and not self.modle_config_save_path.exists():
@@ -269,9 +308,7 @@ class Trainer:
                 model_py_path = inspect.getfile(self.model.__class__)
                 with open(model_py_path, "r", encoding="utf-8") as f:
                     model_source_code = f.read()
-                    with open(
-                        self.save_directory / "model.py", "w", encoding="utf-8"
-                    ) as f:
+                    with open(self.model_code_archive_path, "w", encoding="utf-8") as f:
                         f.write(model_source_code)
         except OSError as e:
             print("Save model code failed:", e)
@@ -295,23 +332,19 @@ class Trainer:
         """
         根据 Train 的相关参数，控制训练时的自动保存逻辑。
         """
-        max_step, current_step, save_step_interval = (
-            self.max_step,
-            self.current_step,
-            self.save_step_interval,
-        )
-
-        current_step_idx = current_step + 1
+        current_step_idx = self.current_step + 1
+        # 如果设置 save_step_interval 为 0，则不保存 checkpoint
         if self.save_step_interval > 0:
+            # 当当前步数（current_step_idx）为 max_step 或者是 save_step_interval 的倍数时保存模型
             if (
-                current_step_idx == max_step
-                or current_step_idx % save_step_interval == 0
+                current_step_idx == self.max_step
+                or current_step_idx % self.save_step_interval == 0
             ):
                 check_poinent = f"iter-{current_step_idx}-ckpt"
                 self.save_pretrained(check_poinent=check_poinent)
                 if self.save_directory:
                     print(
-                        f"Model saved epoch {current_step_idx}/{max_step} at {check_poinent}"
+                        f"Model saved epoch {current_step_idx}/{self.max_step} at {check_poinent}"
                     )
 
     def _auto_validate(self, val_dataloader):
@@ -326,6 +359,14 @@ class Trainer:
         ):
             self.validate(val_dataloader)
 
+    def _inject_fork_script(self):
+        if self.fork and self.fork_directory:
+            self.model = inject_script(self.model, self.fork_directory)
+
+    @abstractmethod
+    def _get_optimizer(self):
+        raise NotImplementedError("train method is not implemented.")
+
     @abstractmethod
     @torch.no_grad()
     def validate(self, val_dataloader) -> torch.Tensor:
@@ -334,3 +375,39 @@ class Trainer:
     @abstractmethod
     def train(self, train_dataset, val_dataloader=None, **kwargs):
         raise NotImplementedError("train method is not implemented.")
+
+
+import lightning as L
+from lightning.fabric.strategies.ddp import DDPStrategy
+
+
+class FabricTrainer(Trainer):
+    _visual_series = {"train_loss": ["step", "train_loss"]}
+
+    def __init__(
+        self,
+        model: nn.Module,
+        config: TrainerConfig,
+        **kwargs,
+    ):
+        process_group_backend = kwargs.get("process_group_backend", "nccl")
+        self.fabric = L.Fabric(
+            devices=config.device_num,
+            accelerator=config.device,
+            strategy=DDPStrategy(process_group_backend=process_group_backend),
+        )
+        super().__init__(model, config, **kwargs)
+
+    def _save_model(self, checkpoint="complete"):
+        # 使用 fabric 保存模型
+        if self.save_directory:
+            save_path = self.save_directory / f"{checkpoint}.pth"
+            current_step_idx = self.current_step + 1
+            save_dict = {
+                "model_class": self.model.__class__.__name__,
+                "state_dict": self.model,
+                "current_step": current_step_idx,
+            }
+            if hasattr(self, "optimizer"):
+                save_dict["optimizer_state_dict"] = self.optimizer
+            self.fabric.save(save_path, save_dict)

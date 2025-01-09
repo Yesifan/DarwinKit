@@ -128,6 +128,7 @@ class TrainerConfig(BaseTrainerConfig):
     device_num: int = 1
     learning_rate: float = 5e-5
     max_train_steps: int = 100000
+    # 标记化后的最大总输入序列长度。长于此的序列将被截断。
     max_seq_length: int = 512
     batch_size: int = 1
     val_batch_size: int = 1

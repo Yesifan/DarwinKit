@@ -3,18 +3,17 @@
 ########################################################################################################
 import math
 import torch
-import lightning as L
 from tqdm.auto import tqdm
+from itertools import cycle
 from torch.utils.data.dataloader import DataLoader
 from spikingjelly.activation_based import functional
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 from typing import Union
-from lightning.fabric.strategies.ddp import DDPStrategy
-from darkit.core.utils.dataset import create_tokenized_gpt_dataset
 
 from .model import GPT as SpikeGPT
 from .config import TrainerConfig
 from ...main import Trainer as BaseTrainer, LogFieldnames
+from darkit.core.utils.dataset import create_tokenized_gpt_dataset
 
 
 class Trainer(BaseTrainer):
@@ -25,11 +24,6 @@ class Trainer(BaseTrainer):
         config: TrainerConfig,
         **kwargs,
     ):
-        self.fabric = L.Fabric(
-            devices=config.num_device,
-            accelerator=config.device,
-            strategy=DDPStrategy(process_group_backend="nccl"),
-        )  # fabric 需要先初始化
         super().__init__(model, tokenizer, config, **kwargs)
         # import wandb  # comment this if you don't have wandb
         # print('logging to wandb... (comment it if you don\'t have wandb)')
@@ -39,22 +33,16 @@ class Trainer(BaseTrainer):
         # 在矩阵乘法中允许使用 TF32 精度进行计算。
         torch.backends.cuda.matmul.allow_tf32 = True
 
-        self.model = model
-        self.device = config.device
         self.config = config
         self.avg_loss = -1
         self.min_dev_loss = 100
         self.dev_loss = -1
-        self.steps = 0
-        self.tokenizer = tokenizer
         self.lr = 0.0
 
-        self.max_step = config.max_epochs
+        # 用于控制自动保存逻辑
+        self.max_step = config.max_step
         self.current_step = 0
-        self.save_step_interval = config.epoch_save_frequency
-
-    def _is_master_process(self):
-        return self.fabric.is_global_zero
+        self.save_step_interval = config.save_step_interval
 
     def _create_dataloader(self, dataset, batch_size):
         ctx_len = self.model.config.ctx_len
@@ -70,115 +58,110 @@ class Trainer(BaseTrainer):
             num_workers=self.config.num_workers,
         )
 
-    def _run_epoch(self, model, optimizer, dataset, is_train: bool):
-        config = self.config
-        fabric = self.fabric
-        # pdb.set_trace(d)
+    def _update_lr(self, optimizer, y):
+        if self.config.lr_decay:  # 如果配置中启用了学习率衰减
+            # number of tokens processed this step (i.e. label is not -100)
+            self.tokens += (y >= 0).sum()
+            lr_final_factor = self.config.lr_final / self.config.learning_rate
+            if self.tokens < self.config.warmup_tokens:
+                # linear warmup
+                lr_mult = lr_final_factor + (1 - lr_final_factor) * float(
+                    self.tokens
+                ) / float(self.config.warmup_tokens)
+            else:
+                # cosine learning rate decay
+                progress = float(self.tokens - self.config.warmup_tokens) / float(
+                    max(1, self.config.final_tokens - self.config.warmup_tokens)
+                )
+                lr_mult = (0.5 + lr_final_factor / 2) + (
+                    0.5 - lr_final_factor / 2
+                ) * math.cos(
+                    math.pi * progress
+                )  # better 1.0 ~ 0.1
+            lr = self.config.learning_rate * lr_mult
+            for param_group in optimizer.param_groups:
+                param_group["lr"] = lr
+        else:
+            lr = self.config.learning_rate
+        return lr
 
-        model.train(is_train)
+    def train(self, train_dataset, valid_dataset=None, is_train=True):
+        self.fabric.launch()
+        self.fabric.seed_everything(3407)
 
-        loader = self._create_dataloader(dataset, config.batch_size)
-        loader = fabric.setup_dataloaders(loader)
-        epoch_length_fixed = config.epoch_length_fixed
-        pbar = (
-            tqdm(
-                enumerate(loader),
-                total=epoch_length_fixed,
-                disable=(torch.cuda.current_device() != 0),
-            )
-            if is_train
-            else tqdm(enumerate(loader))
+        raw_model = self.model.module if hasattr(self.model, "module") else self.model
+        optimizer = raw_model.configure_optimizers(self.config)
+
+        # 如果指定了 resume， 则读取 checkpoint 的权重
+        if self.resume:
+            model, optimizer, resume_step = self._load_checkpoint(raw_model, optimizer)
+            # 如果是从上一个 checkpoint 恢复， 则跳过已经训练过的步数
+            print(f"resume_key: {self.resume_key}, config.name: {self.config.name}")
+            if self.resume_key == self.config.name:
+                print(f"resume_step: {resume_step}")
+                self.current_step = resume_step
+
+        model = self.fabric.setup(raw_model)
+        self.optimizer = self.fabric.setup_optimizers(optimizer)
+
+        loader = self._create_dataloader(train_dataset, self.config.batch_size)
+        loader = self.fabric.setup_dataloaders(loader)
+
+        pbar = tqdm(
+            enumerate(cycle(loader)),
+            total=(self.config.max_step - self.current_step),
+            disable=not self._is_master_process(),
         )
-
-        model.train(is_train)
+        self.tokens = 0  # counter used for learning rate decay
         dev_loss_all = 0
-
+        model.train(is_train)
         for it, train_data in pbar:
+            if self.current_step >= self.config.max_step:
+                break
             x = train_data[:, 0 : model.config.ctx_len].contiguous()
             y = train_data[:, 1 : model.config.ctx_len + 1].contiguous()
-            if it >= epoch_length_fixed:
-                break
+
             with torch.set_grad_enabled(is_train):
                 loss = model(x, y)  # forward the model
                 functional.reset_net(model)
-                fabric.backward(loss)
+                self.fabric.backward(loss)
 
             if is_train:  # backprop and update the parameters
-                if config.grad_norm_clip > 0:
-                    fabric.clip_gradients(
-                        model, optimizer, max_norm=config.grad_norm_clip
+                if self.config.grad_norm_clip > 0:
+                    self.fabric.clip_gradients(
+                        model, optimizer, max_norm=self.config.grad_norm_clip
                     )
 
                 optimizer.step()
                 optimizer.zero_grad()
 
-                if config.lr_decay:  # decay the learning rate based on our progress
-                    # number of tokens processed this step (i.e. label is not -100)
-                    self.tokens += (y >= 0).sum()
-                    lr_final_factor = config.lr_final / config.learning_rate
-                    if self.tokens < config.warmup_tokens:
-                        # linear warmup
-                        lr_mult = lr_final_factor + (1 - lr_final_factor) * float(
-                            self.tokens
-                        ) / float(config.warmup_tokens)
-                    else:
-                        # cosine learning rate decay
-                        progress = float(self.tokens - config.warmup_tokens) / float(
-                            max(1, config.final_tokens - config.warmup_tokens)
-                        )
-                        lr_mult = (0.5 + lr_final_factor / 2) + (
-                            0.5 - lr_final_factor / 2
-                        ) * math.cos(
-                            math.pi * progress
-                        )  # better 1.0 ~ 0.1
-                    lr = config.learning_rate * lr_mult
-                    for param_group in optimizer.param_groups:
-                        param_group["lr"] = lr
-                else:
-                    lr = config.learning_rate
-
+                self.lr = self._update_lr(optimizer, y)
                 now_loss = loss.item()  # report progress
-                self.lr = lr
 
                 # log training loss
                 self.log(
                     LogFieldnames(
-                        step=self.steps * self.config.batch_size, train_loss=now_loss
+                        step=self.current_step * self.config.batch_size,
+                        train_loss=now_loss,
                     )
                 )
-                self.steps += 1
 
                 if self.avg_loss < 0:
                     self.avg_loss = now_loss
                 else:
                     factor = 1 / (it + 1)
                     self.avg_loss = self.avg_loss * (1.0 - factor) + now_loss * factor
+
                 pbar.set_description(
-                    f"epoch {self.current_step}/{self.max_step}: ppl {math.exp(self.avg_loss):.2f} loss {self.avg_loss:.4f} lr {lr:e}"
+                    f"step {self.current_step}: ppl {math.exp(self.avg_loss):.2f} loss {self.avg_loss:.4f} lr {self.lr:e}"
                 )
+                self._auto_save_pretrained()
+                self.current_step += 1
             else:
                 dev_loss_all += loss.item()
+
         if not is_train:
             self.dev_loss = dev_loss_all / len(loader)
-
-    def train(self, train_dataset, valid_dataset=None, is_train=True):
-        fabric = self.fabric
-        fabric.launch()
-        fabric.seed_everything(3407)
-
-        model, config = self.model, self.config
-        raw_model = model.module if hasattr(self.model, "module") else model
-        optimizer = raw_model.configure_optimizers(config)
-        model = fabric.setup(raw_model)
-        optimizer = fabric.setup_optimizers(optimizer)
-
-        dataset = train_dataset
-
-        self.tokens = 0  # counter used for learning rate decay
-        for epoch in range(config.max_epochs):
-            self._run_epoch(model, optimizer, dataset, is_train)
-            self._auto_save_pretrained()
-            self.current_step += 1
 
 
 BaseTrainer.register(SpikeGPT.__name__, Trainer)

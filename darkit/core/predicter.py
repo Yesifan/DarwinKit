@@ -3,7 +3,8 @@ import torch
 import torch.nn as nn
 from typing import Optional, Union
 from pathlib import Path
-from .utils import MODEL_PATH
+from .lib.inject import inject_script
+from .utils import MODEL_PATH, model as model_utils
 
 
 class Predicter:
@@ -48,53 +49,37 @@ class Predicter:
             return super().__new__(cls)
 
     @classmethod
+    def get_root(cls) -> Path:
+        return MODEL_PATH
+
+    @classmethod
     def get_save_directory(cls, name: str) -> Path:
-        save_directory = MODEL_PATH / name
+        save_directory = cls.get_root() / name
         return save_directory
+
+    @classmethod
+    def get_fork_directory(cls, fork: str) -> Optional[Path]:
+        return model_utils.get_fork_directory(cls.get_root(), fork)
 
     @classmethod
     def get_checkpoint(cls, name: str, checkpoint: Optional[str] = None) -> Path:
         save_directory = cls.get_save_directory(name)
-
-        # 寻找文件夹下的最新的 checkpoint 的 name
-        if checkpoint:
-            # check if the checkpoint exists
-            if not (save_directory / f"{checkpoint}.pth").exists():
-                raise FileNotFoundError(f"checkpoint {checkpoint} not found")
-            return save_directory / f"{checkpoint}.pth"
-        try:
-            checkpoint_path = max(
-                save_directory.glob("*.pth"), key=lambda x: x.stat().st_ctime
-            )
-            # 去掉后缀
-            return checkpoint_path
-        except ValueError:
-            raise FileNotFoundError(f"checkpoint not found in {save_directory}")
+        return model_utils.get_checkpoint(save_directory, checkpoint)
 
     @classmethod
     def get_model_config_json(cls, name: str) -> dict:
         save_directory = cls.get_save_directory(name)
-        with open(save_directory / "config.json", "r") as f:
-            config_dict = json.load(f)
-        return config_dict
+        return model_utils.get_model_config_json(save_directory)
 
     @classmethod
     def get_external_config_json(cls, name: str) -> Optional[dict]:
         save_directory = cls.get_save_directory(name)
-        external_config_path = save_directory / "external_config.json"
-        if external_config_path.exists():
-            with open(external_config_path, "r") as f:
-                config_dict = json.load(f)
-            return config_dict
-        else:
-            return None
+        return model_utils.get_external_config_json(save_directory)
 
     @classmethod
     def get_trainer_config_json(cls, name: str) -> dict:
         save_directory = cls.get_save_directory(name)
-        with open(save_directory / "trainer_config.json", "r") as f:
-            config_dict = json.load(f)
-        return config_dict
+        return model_utils.get_trainer_config_json(save_directory)
 
     @classmethod
     def get_model(cls, name: str, checkpoint: Optional[str] = None) -> nn.Module:
@@ -115,6 +100,16 @@ class Predicter:
         return sub_class.get_model(name, checkpoint)
 
     @classmethod
+    def inject_script(cls, model, name: str):
+        external_config = cls.get_external_config_json(name)
+        if external_config:
+            fork = external_config.get("fork", None)
+            fork_directory = cls.get_fork_directory(fork)
+            if fork_directory is not None:
+                model = inject_script(model, fork_directory)
+        return model
+
+    @classmethod
     def from_pretrained(
         cls,
         name: str,
@@ -124,6 +119,7 @@ class Predicter:
         trainer_config = cls.get_trainer_config_json(name)
         device = device if device else trainer_config.get("device", "cuda")
         model = cls.get_model(name, checkpoint).to(device)
+        model = cls.inject_script(model, name)
         return cls(name, model, device=device)
 
     def _predict(self, ctx):
