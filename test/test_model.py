@@ -295,5 +295,66 @@ class TestTrainerResume(unittest.TestCase):
             print(f"Model {self.model_name} deleted.")
 
 
+# python -m unittest test.test_model.TestTrainerLMResume
+class TestTrainerLMResume(unittest.TestCase):
+    model_name = f"SpikeLM-Test-{random.randint(1000, 9999)}"
+    # model_name = "SpikeLM-Test-1417"
+
+    def test_train_predict(self):
+        from darkit.lm.models.SpikeLM import TrainerConfig, SpikeLMConfig, SpikeLM
+
+        tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+        m_conf = SpikeLMConfig(
+            vocab_size=tokenizer.vocab_size,
+            hidden_size=72,
+            num_hidden_layers=6,
+            num_attention_heads=6,
+        )
+        model = SpikeLM(m_conf)
+
+        t_conf = TrainerConfig(
+            name=self.model_name,
+            batch_size=2,
+            max_train_steps=10,
+        )
+
+        # 训练模型
+        wikitext = load_dataset("Salesforce/wikitext", "wikitext-103-raw-v1")
+        wikitext_train = wikitext["train"]  # type: ignore
+
+        with Trainer(model, tokenizer=tokenizer, config=t_conf) as trainer:
+            trainer.train(wikitext_train)
+
+        self.assertTrue(
+            trainer.is_name_exist,
+            f"Model {self.model_name} not saved.",
+        )
+        model = SpikeLM(m_conf)
+        t_conf2 = TrainerConfig(
+            name=self.model_name,
+            batch_size=2,
+            max_train_steps=20,
+        )
+
+        with Trainer(
+            model, tokenizer=tokenizer, config=t_conf2, resume=self.model_name
+        ) as trainer:
+            trainer.train(wikitext_train)
+
+        # 测试模型
+        ctx_len = 64
+        predicter = Predicter.from_pretrained(self.model_name)
+        prompt = "hello world"
+        print(prompt, end="")
+        for char in predicter.predict(prompt, ctx_len=ctx_len):
+            print(char, end="", flush=True)
+        print()
+
+        # 删除模型
+        if trainer.save_directory:
+            shutil.rmtree(trainer.save_directory)
+            print(f"Model {self.model_name} deleted.")
+
+
 if __name__ == "__main__":
     unittest.main()

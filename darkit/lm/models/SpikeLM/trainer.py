@@ -1,5 +1,6 @@
 import torch
 from tqdm import tqdm
+from itertools import cycle
 from torch.utils.data import DataLoader
 from transformers import get_scheduler, PreTrainedTokenizer, PreTrainedTokenizerFast
 from spikingjelly.activation_based import functional
@@ -123,7 +124,11 @@ class Trainer(BaseTrainer):
             val_dataloader = self.fabric.setup_dataloaders(val_dataloader)
 
         max_train_steps = self.config.max_train_steps
-        pbar = tqdm(train_dataloader, total=max_train_steps, desc="Training")
+        pbar = tqdm(
+            cycle(train_dataloader),
+            total=max_train_steps - self.current_step,
+            desc="Training",
+        )
         for batch in pbar:
             if self.current_step >= self.config.max_train_steps:
                 break
