@@ -116,10 +116,13 @@ class Predicter:
         device: Optional[str] = None,
         checkpoint: Optional[str] = None,
     ):
+        """
+        不可以直接从父 Predicter 类实例化，需要保证 root 路径一致，否则无法根据 name 找到模型
+        """
+        model = cls.get_model(name, checkpoint)
+        model = cls.inject_script(model, name)
         trainer_config = cls.get_trainer_config_json(name)
         device = device if device else trainer_config.get("device", "cuda")
-        model = cls.get_model(name, checkpoint).to(device)
-        model = cls.inject_script(model, name)
         return cls(name, model, device=device)
 
     def _predict(self, ctx):

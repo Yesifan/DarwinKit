@@ -197,7 +197,7 @@ class Trainer:
 
     @property
     def root(self) -> Path:
-        return MODEL_PATH
+        return MODEL_PATH / "base"
 
     @property
     def save_directory(self) -> Optional[Path]:
@@ -305,13 +305,13 @@ class Trainer:
     def _copy_model_code(self):
         try:
             if self.save_directory:
-                model_py_path = inspect.getfile(self.model.__class__)
-                with open(model_py_path, "r", encoding="utf-8") as f:
-                    model_source_code = f.read()
-                    with open(self.model_code_archive_path, "w", encoding="utf-8") as f:
-                        f.write(model_source_code)
+                model_source_code = inspect.getsource(self.model.__class__)
+                with open(self.model_code_archive_path, "w", encoding="utf-8") as f:
+                    f.write(model_source_code)
         except OSError as e:
             print("Save model code failed:", e)
+        except TypeError as e:
+            print("Cannot retrieve source code for built-in class:", e)
 
     def save_pretrained(self, check_poinent="complete"):
         """
