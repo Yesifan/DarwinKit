@@ -1,5 +1,7 @@
 {
     "$schema": "https://inlang.com/schema/inlang-message-format",
+    "h_doc": "Doc",
+    "h_network": "Network",
     "not_found_tip": "Sorry, the page you are looking for is not found.",
     "back_home": "Back to Home",
     "docs": "Docs",
