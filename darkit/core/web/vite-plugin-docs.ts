@@ -19,6 +19,7 @@ type DocsTree =
 			title: string;
 			path: string;
 	  };
+
 const isPathIn = (a: string, b: string) => {
 	const relative = path.relative(b, a);
 	return !relative.startsWith('..') && !path.isAbsolute(relative);
@@ -77,13 +78,14 @@ const removeDocsCache = async (target: string) => {
 };
 
 /**
- * 将 markdown 文件中的静态资源引用转换为相对路径
+ * 将 markdown 文件中的静态资源引用转换为 web 路径，将链接路径页转换为 web 路径
  * @returns { content: string, staticFiles: [string, string][] } 转换后的 markdown 内容和静态资源文件路径
  * staticFiles 为 [源文件路径, 相对路径] 的数组
  */
 const transformMarkdown = async (sourceDir: string) => {
 	const content = await fs.readFile(sourceDir, 'utf-8');
 	const staticFiles: [string, string][] = [];
+	// 将 markdown 文件中的本地静态资源引用转换为 web 路径， 并将本地文件路径读取出来
 	const updatedContent = content.replace(/!\[.*?\]\((\/.*?)(?:\s".*?")?\)/g, (match, p1) => {
 		const staticFile = path.isAbsolute(p1) ? path.join(ROOT_PATH, p1) : path.join(sourceDir, p1);
 		// 如果是网络文件则跳过
@@ -98,9 +100,29 @@ const transformMarkdown = async (sourceDir: string) => {
 			);
 		}
 	});
-	return { content: updatedContent, staticFiles };
+	// 将 markdown 文件中的链接路径转换为 web 路径
+	const finalContent = updatedContent.replace(/\[.*?\]\((.*?).md\)/g, (match, p1) => {
+		// 如果是网络文件则跳过
+		if (p1.startsWith('http')) return match;
+		const newUrl = (p1 as string)
+			.split('/')
+			.map((segment) => {
+				if (segment !== '.' && segment !== '..' && segment.includes('.')) {
+					return segment.split('.')[1];
+				}
+				return segment;
+			})
+			.join('/');
+
+		return match.replace(`${p1}.md`, newUrl);
+	});
+	return { content: finalContent, staticFiles };
 };
 
+/**
+ * 文件夹和文档的命名需要符合“序号.标题”格式
+ * 构建到 svelte 中时根据序号排序，标题作为 svelte 文件夹和组件的名称
+ */
 export const docs = ({
 	source,
 	target,
