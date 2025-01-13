@@ -4,6 +4,7 @@
 	import logo from '$lib/images/logo.svg';
 	import DarkModeButton from './dark-mode-button.svelte';
 	import I18nButton from './i18n-button.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	let pathname = $derived($page.url.pathname);
 </script>
@@ -29,9 +30,9 @@
 		<span class="text-primary px-2 text-lg font-bold"> DarwinKit </span>
 	</a>
 	<ul class="flex flex-1 gap-2">
-		{@render item('Doc', '/docs', '/docs')}
+		{@render item(m.h_doc(), '/docs', '/docs')}
+		{@render item(m.h_network(), '/flow', '/flow')}
 		{@render item('LM', '/lm/train', '/lm')}
-		{@render item('Build Network', '/flow', '/flow')}
 	</ul>
 	<I18nButton class="mr-4" />
 	<DarkModeButton />

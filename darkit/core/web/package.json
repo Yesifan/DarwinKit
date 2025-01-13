@@ -52,6 +52,7 @@
 		"@xyflow/svelte": "^0.1.23",
 		"codejar": "^4.2.0",
 		"echarts": "^5.5.1",
+		"front-matter": "^4.0.2",
 		"mode-watcher": "^0.4.1",
 		"prismjs": "^1.29.0",
 		"svelte-sonner": "^0.3.28",

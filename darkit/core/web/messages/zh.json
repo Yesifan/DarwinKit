@@ -1,5 +1,7 @@
 {
     "$schema": "https://inlang.com/schema/inlang-message-format",
+    "h_doc": "文档",
+    "h_network": "网络",
     "not_found_tip": "抱歉，没有找到您要查找的页面。",
     "back_home": "返回首页",
     "docs": "文档",

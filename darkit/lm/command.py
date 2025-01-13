@@ -26,14 +26,19 @@ def show():
 
     click.echo("TRAINED MODELS:")
     # 读取 MODEL_PATH 下的模型文件夹，输出模型名称
-    for i, model in enumerate(MODEL_PATH.iterdir()):
-        if model.is_dir():  # 排除__options__.json文件
+    for model in MODEL_PATH.iterdir():
+        if model.is_dir() and any(
+            version.suffix == ".pth" for version in model.iterdir()
+        ):  # 只展示包含 .pth 文件的文件夹
             click.echo(f"  - {model.name}")
             # 模型文件夹下的每个 pth 文件都是一个版本的训练好的模型权重
             # 以 model:version 的形式输出每个版本
-            for j, version in enumerate(model.iterdir()):
+            i = 1
+            # 按照文件修改时间排序
+            for version in sorted(model.iterdir(), key=lambda x: x.stat().st_mtime):
                 if version.suffix == ".pth":
-                    click.echo(f"    {j + 1}. {version.stem}")
+                    click.echo(f"    {i}. {version.stem}")
+                    i += 1
     click.echo()
 
 
@@ -62,7 +67,7 @@ def predict(model_type: str, model_name: str, prompt: str, device: str, ctx_len:
     Examples: darkit predict SpikeGPT SpikeGPT:complete "I am" --tokenizer gpt2 --ctx_len 512
     """
     import torch
-    from darkit.core import Predicter
+    from .main import Predicter
 
     # model_name = MODEL_NAME:MODEL_VERSION
     # 把 model_name 拆分为 model_name 和 version，如果没有 version 则默认为 'complete'
