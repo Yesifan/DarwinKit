@@ -1,9 +1,11 @@
 import path from 'path';
 import fs from 'fs/promises';
+import fm from 'front-matter';
 import { watch, type FSWatcher } from 'fs';
 import type { Plugin } from 'vite';
 
 export const DOCS_NAVIGATION = 'navigation.json';
+export const ZH_DOCS_NAVIGATION = 'navigation_zh.json';
 
 const ROOT_PATH = path.join(__dirname, '../../../');
 const ROOT_STATIC_PATH = path.join(ROOT_PATH, 'static/docs');
@@ -18,6 +20,7 @@ type DocsTree =
 			order: number;
 			title: string;
 			path: string;
+			metadata: Record<string, any>;
 	  };
 
 const isPathIn = (a: string, b: string) => {
@@ -25,34 +28,39 @@ const isPathIn = (a: string, b: string) => {
 	return !relative.startsWith('..') && !path.isAbsolute(relative);
 };
 
-const createDirectory = async (
+const createNavigation = async (
 	source: string,
 	root: string | undefined = undefined
 ): Promise<DocsTree[]> => {
-	const docsTree = [];
+	const docsTree: DocsTree[] = [];
 
 	const files = await fs.readdir(source, { withFileTypes: true });
 	for (const file of files) {
 		//Generate a navigation from an en document
 		const [order, title] = file.name.split('.');
-		if (!order || !title) continue; // 跳过不符合“序号.标题”格式的文件或目录
+		// 跳过不符合“序号.标题”格式的文件或目录
+		if (!order || !title) continue;
 
 		if (file.isDirectory()) {
 			const root2 = root ? `${root}/${title}` : title;
-			const childrenTree = await createDirectory(path.join(source, file.name), root2);
+			const childrenTree = await createNavigation(path.join(source, file.name), root2);
 			docsTree.push({
 				order: parseInt(order, 10),
 				title: title.replace(/-/g, ' '),
 				children: childrenTree
 			});
 		} else if (file.isFile() && file.name.endsWith('.md')) {
+			const content = await fs.readFile(path.join(source, file.name), 'utf-8');
+			const { attributes } = fm(content);
+
 			const title2 = title.replace('.md', '');
 			// svelte router path
-			const path = root ? `/docs/${root}/${title2}` : `/docs/${title2}`;
+			const urlPath = root ? `/docs/${root}/${title2}` : `/docs/${title2}`;
 			docsTree.push({
 				order: parseInt(order, 10),
 				title: title2.replace(/-/g, ' '),
-				path: path
+				path: urlPath,
+				metadata: attributes as Record<string, any>
 			});
 		}
 	}
@@ -137,7 +145,15 @@ export const docs = ({
 	const sourcePath = path.join(__dirname, source);
 	const targetPath = path.join(__dirname, target);
 	const docStaticPath = path.join(__dirname, staticDir);
-	const menusJSONPath = path.join(targetPath, DOCS_NAVIGATION);
+	const navJSONPath = path.join(targetPath, DOCS_NAVIGATION);
+	const zhNavJSONPath = path.join(targetPath, ZH_DOCS_NAVIGATION);
+
+	const i18nWriteNavigationFile = async () => {
+		const enDocsTree = await createNavigation(path.join(ROOT_PATH, 'docs'));
+		const zhDocsTree = await createNavigation(path.join(ROOT_PATH, 'docs', 'zh'));
+		await fs.writeFile(navJSONPath, JSON.stringify(enDocsTree));
+		await fs.writeFile(zhNavJSONPath, JSON.stringify(zhDocsTree));
+	};
 
 	/** 复制静态文件 */
 	const copyStaticFiles = async (files: [string, string][]) => {
@@ -175,8 +191,6 @@ export const docs = ({
 
 	/** 监听 docs 目录下的文件变化，实时更新 docs 目录 */
 	const buildDocsPage = (source: string, target: string) => {
-		const menusJSONPath = path.join(target, DOCS_NAVIGATION);
-
 		const events = new Set<string>();
 		let timer: NodeJS.Timeout | null = null;
 
@@ -189,8 +203,7 @@ export const docs = ({
 				events.clear();
 				console.debug(`Docs page ${Array.from(cache).join(',')} changed: rebuild...`);
 				// 写入新的文档目录
-				const docsTree = await createDirectory(source);
-				await fs.writeFile(menusJSONPath, JSON.stringify(docsTree));
+				await i18nWriteNavigationFile();
 				cache.forEach(async (filename) => {
 					const sourceFile = path.join(source, filename);
 					if (filename.endsWith('.md')) {
@@ -226,8 +239,7 @@ export const docs = ({
 		async config(config, { command }) {
 			isDev = command === 'serve';
 			// 写入新的文档目录
-			const docsTree = await createDirectory(sourcePath);
-			await fs.writeFile(menusJSONPath, JSON.stringify(docsTree));
+			await i18nWriteNavigationFile();
 			await removeDocsCache(targetPath);
 			await copyDocsPage(sourcePath, targetPath);
 		},

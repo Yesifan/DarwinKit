@@ -1,6 +1,7 @@
 static/docs/*
 src/routes/docs/**/*.md
 src/routes/docs/navigation.json
+src/routes/docs/navigation_zh.json
 
 # ---- Svelte ----
 node_modules
