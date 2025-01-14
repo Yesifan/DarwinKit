@@ -70,7 +70,7 @@ export const generateNetwork = (edges: Edge[]) => {
 	const network: string[] = [];
 	let source = 'input';
 	while (true) {
-		let current = edges.find((edge) => edge.source === source);
+		const current = edges.find((edge) => edge.source === source);
 		if (!current) {
 			network.push(source);
 			break;
@@ -95,8 +95,10 @@ from spikingjelly.activation_based import neuron, layer, functional
 
 class Model(nn.Module):
   # 这里取决于input那里的维度
-  def __init__(self, C=None, H=None, W=None): 
+  def __init__(self, T=10): 
     super().__init__()
+		self.T = T
+
     self.layers = nn.Sequential(
 			${connectNodes
 				.map((node) => {
@@ -104,13 +106,15 @@ class Model(nn.Module):
 				})
 				.join(',\n      ')}
     )
-    functional.set_step_mode('m')
+				
+    functional.set_step_mode(self, 'm')
     
   def forward(self, x):
-    # make sure dimension of x is (T, C, H, W) C，H，w取决于input那里设置的维度
-    functional.reset_net(self)
-    x = self.layers(x)
-    return x
+    # make sure the x  has T dimension
+		x_seq = x.unsqueeze(0).repeat(self.T, 1, 1, 1, 1)
+    x_seq = self.layers(x_seq)
+		fr = x_seq.mean(0)
+    return fr
   `;
 	return networkCode;
 };

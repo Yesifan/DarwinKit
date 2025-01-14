@@ -1,9 +1,7 @@
 <script lang="ts" module>
 	import type { Snapshot } from '../$types';
-	import type { Node, Edge } from '@xyflow/svelte';
+	import type { Edge } from '@xyflow/svelte';
 	import { type Operator } from '$lib/flow';
-
-	type MyNode = Node<{ label: string; type: string; func?: string; params?: string }>;
 </script>
 
 <script lang="ts">
@@ -18,6 +16,7 @@
 	import Code from '$lib/components/code.svelte';
 	import { generateNetwork, generateNetworkCode4Conn } from '$lib/flow';
 	import ControlEditor from '$lib/components/flow/control-editor.svelte';
+	import { type2node, getDefaultModelsNodesEdges, type MyNode } from './helper';
 
 	const edgeOpt = {
 		type: 'default',
@@ -25,25 +24,19 @@
 		markerEnd: MarkerType.Arrow
 	};
 
-	let index = 1;
+	let index = 100;
 	let pyCode = $state('');
 	let showCode = $state(false);
 	let selected = $state<MyNode | null>(null);
 
 	let connect = $state<string[]>([]);
+
+	const [defaultNodes, defaultEdges] = getDefaultModelsNodesEdges();
 	// We are using writables for the nodes and edges to sync them easily. When a user drags a node for example, Svelte Flow updates its position.
-	const nodes = writable<MyNode[]>([
-		{
-			id: 'input',
-			type: 'input',
-			data: { label: 'Input(4, 64, 64)', type: 'Input', params: '4, 64, 64' },
-			position: { x: 0, y: 0 },
-			deletable: false
-		}
-	]);
+	const nodes = writable<MyNode[]>(defaultNodes);
 
 	// same for edges
-	const edges = writable<Edge[]>([]);
+	const edges = writable<Edge[]>(defaultEdges);
 
 	const apply = (id: string, func?: string, params?: string) => {
 		nodes.update((nodes) => {
@@ -62,20 +55,12 @@
 		});
 	};
 	const addNode = (type: Operator) => {
-		const target = `${type}-${index++}`;
+		index += 1;
 		const source = connect[connect.length - 1];
 		const { x, y } = $nodes.find((n) => n.id === source)!.position;
-		nodes.update((n) => [
-			...n,
-			{
-				id: target,
-				type: 'default',
-				data: { label: target, type },
-				position: { x: x, y: y + 60 },
-				deletable: true
-			}
-		]);
-		return [source, target];
+		const newNode = type2node(type, index, [x, y]);
+		nodes.update((n) => [...n, newNode]);
+		return [source, newNode.id];
 	};
 
 	const addNodeEdge = (type: Operator) => {
@@ -96,15 +81,6 @@
 	});
 
 	$inspect(selected).with(() => console.log(selected));
-
-	export const snapshot: Snapshot<[number, MyNode[], Edge[]]> = {
-		capture: () => [index, $nodes, $edges],
-		restore: ([_index, _nodes, _edges]) => {
-			index = _index;
-			nodes.set(_nodes);
-			edges.set(_edges);
-		}
-	};
 </script>
 
 <!--
