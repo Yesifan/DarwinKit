@@ -36,20 +36,18 @@
 	);
 
 	const getModel = async (model: string) => {
-		try {
-			const [status, data] = await getModelAPI(model);
-			if (status === 200) {
-				return data;
-			} else if (status === 400) {
-				toast.error(`${model} 训练失败: ${data.detail}`, { duration: 10000 });
-				return null;
-			}
-		} finally {
-			if (destried) return null;
-			toast.warning('fetch failed, retrying in 5s');
-			await new Promise((resolve) => setTimeout(resolve, 5000));
-			return getModel(model);
+		const [status, data] = await getModelAPI(model);
+		if (status === 200) {
+			return data;
+		} else if (status === 400) {
+			toast.error(`${model} 训练失败: ${data.detail}`, { duration: 10000 });
+			return null;
 		}
+
+		if (destried) return null;
+		toast.warning('fetch failed, retrying in 5s');
+		await new Promise((resolve) => setTimeout(resolve, 5000));
+		return getModel(model);
 	};
 
 	const getModels = async (models: string[]) => {
@@ -60,7 +58,7 @@
 
 	const addLogDataWS = async (model: string) => {
 		let connect = 1;
-		const wsURL = `/api/lm/models/${model}/logging`;
+		const wsURL = `/api/train/${model}/logging`;
 		const ws = new ReconnectingWebSocket(wsURL); // 使用相对路径，假设前端和后端部署在同一个域名下
 		wss.push(ws);
 		ws.onMessage = (data) => {
