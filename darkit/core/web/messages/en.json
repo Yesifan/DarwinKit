@@ -1,7 +1,9 @@
 {
     "$schema": "https://inlang.com/schema/inlang-message-format",
     "h_doc": "Doc",
-    "h_network": "Network",
+    "t_network": "Build Network",
+    "t_spiking": "Spiking",
+    "apply": "Apply",
     "not_found_tip": "Sorry, the page you are looking for is not found.",
     "back_home": "Back to Home",
     "docs": "Docs",
@@ -39,6 +41,7 @@
     "IntegrateModels": "Integrate Models",
     "modelVisualize": "Model Visualize",
     "modelName": "Model Name",
+    "modelFile": "Model File",
     "trainConfig": "Train Config",
     "modelType": "Model Type",
     "modelConfig": "Model Config",
@@ -59,5 +62,8 @@
     "upload_model_weight_quote": "Upload the model weights file. This file should contain the pre-trained weights for the model you want to use.",
     "not_found_docs_tip": "Sorry, the document you are looking for is not found.",
     "fork": "Fork",
-    "back": "Back"
+    "back": "Back",
+    "spiking_title": "Spiking ANN Model",
+    "spiking_desc": "Upload an ANN model file, then select the module in the visual computation graph to replace it with the spiking module you choose.",
+    "spiking_upload": "Upload ANN Model"
 }

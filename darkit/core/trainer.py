@@ -1,8 +1,11 @@
 import os
 import json
 import inspect
+import tqdm
 import torch
 import torch.nn as nn
+from itertools import cycle
+from spikingjelly.activation_based import functional
 from abc import abstractmethod
 from dataclasses import dataclass, fields
 from pathlib import Path
@@ -10,7 +13,7 @@ from typing import Optional
 
 
 from .lib.inject import inject_script
-from .utils import MODEL_PATH, CSVLogger, get_local_ip, model as model_utils
+from .utils import BASE_MODEL_PATH, CSVLogger, get_local_ip, model as model_utils
 
 
 @dataclass
@@ -22,19 +25,23 @@ class LogFieldnames:
 
 @dataclass
 class TrainerConfig:
-    name: str = "cpu"
-    model_type = "RWKV"
-    device = None
-    max_step = 100
-    device_num = 1
-    num_workers = 0  # for DataLoader
+    name: str = "MyModel"
+    model_type: str = "RWKV"
+    device: str = "cpu"
+    max_step: int = 100
+    device_num: int = 1
+    num_workers: int = 0  # for DataLoader
+
+    T: int = 10
+    batch_size: int = 4
+    learning_rate: float = 1e-3
 
     # 模型评估设置
-    eval_iters = 100
-    eval_step_interval = 5
+    eval_iters: int = 100
+    eval_step_interval: int = 5
 
     # 模型保存设置
-    save_step_interval = 10
+    save_step_interval: int = 100
 
 
 class Trainer:
@@ -197,7 +204,7 @@ class Trainer:
 
     @property
     def root(self) -> Path:
-        return MODEL_PATH / "base"
+        return BASE_MODEL_PATH
 
     @property
     def save_directory(self) -> Optional[Path]:
@@ -280,8 +287,12 @@ class Trainer:
 
     def _save_model_config(self):
         if self.modle_config_save_path and not self.modle_config_save_path.exists():
-            with open(self.modle_config_save_path, "w") as f:
-                json.dump(self.model.config.__dict__, f)
+            if hasattr(self.model, "config"):
+                with open(self.modle_config_save_path, "w") as f:
+                    json.dump(self.model.config.__dict__, f)
+            else:
+                with open(self.modle_config_save_path, "w") as f:
+                    json.dump({}, f)
 
     def _save_trainer_config(self):
         if self.trainer_config_save_path and not self.trainer_config_save_path.exists():
@@ -372,9 +383,43 @@ class Trainer:
     def validate(self, val_dataloader) -> torch.Tensor:
         raise NotImplementedError("train method is not implemented.")
 
-    @abstractmethod
+    def _create_dataloader(self, dataset):
+        return torch.utils.data.DataLoader(
+            dataset=dataset, batch_size=self.config.batch_size, shuffle=True
+        )
+
+    def _get_optimizer(self):
+        return torch.optim.Adam(self.model.parameters(), lr=self.config.learning_rate)
+
     def train(self, train_dataset, val_dataloader=None, **kwargs):
-        raise NotImplementedError("train method is not implemented.")
+        criterion = nn.CrossEntropyLoss()
+        train_loader = self._create_dataloader(train_dataset)
+        self.model.train()
+        self.optimizer = self._get_optimizer()
+        pbar = tqdm.tqdm(cycle(train_loader), total=self.config.max_step)
+        for images, labels in pbar:
+            images = images.to(self.device)
+            labels = labels.to(self.device)
+            if self.current_step >= self.max_step:
+                break
+
+            outputs = self.model(images)
+            loss = criterion(outputs, labels)
+
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+            functional.reset_net(self.model)
+            self._auto_save_pretrained()
+
+            self.log(
+                LogFieldnames(
+                    step=self.current_step,
+                    train_loss=loss.item(),
+                )
+            )
+            pbar.set_description(f"Loss: {loss.item():.4f}")
+            self.current_step += 1
 
 
 import lightning as L

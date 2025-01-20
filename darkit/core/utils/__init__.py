@@ -14,7 +14,9 @@ __all__ = ["CSVLogger"]
 DARWIN_KIT_HOME = os.environ.get("DARWIN_KIT_HOME", "~/.cache/darwinkit")
 HOME_PATH = os.path.expanduser(DARWIN_KIT_HOME)
 MODEL_PATH = Path(HOME_PATH) / "models"
+BASE_MODEL_PATH = Path(MODEL_PATH) / "base"
 DATASET_PATH = Path(HOME_PATH) / "datasets"
+BASE_DATASET_PATH = Path(DATASET_PATH) / "base"
 
 TMP_PATH = Path(__file__).parent.parent.parent / "tmp"
 PWA_PATH = Path(__file__).parent.parent / "web" / "build"

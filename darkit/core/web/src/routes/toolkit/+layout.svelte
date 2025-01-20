@@ -5,7 +5,11 @@
 	const contents = [
 		{
 			caption: m.toolkit(),
-			contents: [[m.h_network(), '/toolkit/flow']]
+			contents: [
+				[m.t_spiking(), '/toolkit/spiking'],
+				[m.t_network(), '/toolkit/flow'],
+				[m.visualTrain(), '/toolkit/visual']
+			]
 		}
 	];
 </script>

@@ -3,13 +3,17 @@
 	import BaseNode, { NODE_COLORS } from './flow/base-node.svelte';
 	import ExpandableNode from './flow/expandable-node.svelte';
 
-	export type NXNode = [string, { sub_module_size: number; depth?: number; level?: number }];
+	export type NXNode = [
+		string,
+		{ label?: string; sub_module_size: number; depth?: number; level?: number }
+	];
 	export type NXEdge = [string, string];
 
 	export type Props = {
 		class?: string;
 		nodes?: NXNode[];
 		edges?: NXEdge[];
+		selected?: Node | null;
 		onNodeClick?: (event: CustomEvent<{ node: Node; event: MouseEvent | TouchEvent }>) => void;
 		onNodeExpand?: (id: string) => void;
 	};
@@ -97,10 +101,16 @@
 		class: className,
 		nodes = [],
 		edges = [],
+		selected = $bindable(null),
 		onNodeClick = () => {},
 		onNodeExpand
 	}: Props = $props();
 	let nodesWithLevels = $derived(getNodeWithDepth(nodes, edges));
+
+	const onnodeclick = (event: CustomEvent<{ node: Node; event: MouseEvent | TouchEvent }>) => {
+		onNodeClick(event);
+		selected = event.detail.node;
+	};
 
 	$effect(() => {
 		const positionMap = hierarchicalLayout(nodesWithLevels);
@@ -112,7 +122,7 @@
 					return {
 						id: id,
 						type: data.sub_module_size > 0 ? 'expandable' : 'base',
-						data: { label: id, color, onClick: onNodeExpand, ...data },
+						data: { label: data.label ?? id, color, onClick: onNodeExpand, ...data },
 						position: positionMap[id],
 						deletable: false
 					};
@@ -145,7 +155,7 @@ This means that the parent container needs a height to render the flow.
 		colorMode={$mode}
 		snapGrid={[20, 20]}
 		defaultEdgeOptions={EDGE_OPT}
-		on:nodeclick={onNodeClick}
+		on:nodeclick={onnodeclick}
 		fitView
 	>
 		<Controls position="bottom-right" />

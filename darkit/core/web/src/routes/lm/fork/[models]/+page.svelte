@@ -128,9 +128,9 @@
 		<div class="col-span-4 flex h-full flex-col gap-4 overflow-hidden">
 			<div class="flex items-center justify-between">
 				<span class="text-lg font-semibold">{data.name}</span>
-				<Button variant="destructive" size="lg" onclick={() => releaseNetwork(data.name)}
-					>Release</Button
-				>
+				<Button variant="destructive" size="lg" onclick={() => releaseNetwork(data.name)}>
+					Release
+				</Button>
 			</div>
 			{#if currentModule.length === 0}
 				<div class="flex h-full items-center justify-center text-gray-400">EMPTY</div>

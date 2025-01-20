@@ -1,7 +1,9 @@
 {
     "$schema": "https://inlang.com/schema/inlang-message-format",
     "h_doc": "文档",
-    "h_network": "网络",
+    "t_network": "网络构建",
+    "t_spiking": "脉冲化",
+    "apply": "应用",
     "not_found_tip": "抱歉，没有找到您要查找的页面。",
     "back_home": "返回首页",
     "docs": "文档",
@@ -39,6 +41,7 @@
     "IntegrateModels": "集成模型",
     "modelVisualize": "模型可视化",
     "modelName": "模型名字",
+    "modelFile": "模型文件",
     "trainConfig": "",
     "modelType": "模型类型",
     "modelConfig": "模型配置",
@@ -59,5 +62,8 @@
     "upload_model_weight_quote": "上传模型权重文件。该文件应包含您想要使用的模型的预训练权重。",
     "not_found_docs_tip": "抱歉，没有找到您要查找的文档。",
     "fork": "分叉",
-    "back": "后退"
+    "back": "后退",
+    "spiking_title": "脉冲化ANN模型",
+    "spiking_desc": "上传 ANN 模型文件，然后在可视化计算图中选择模块将其替换为您选的脉冲化模块",
+    "spiking_upload": "上传 ANN 模型"
 }

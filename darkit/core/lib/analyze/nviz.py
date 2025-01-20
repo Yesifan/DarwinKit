@@ -6,8 +6,8 @@ import types
 import torch.nn as nn
 import networkx as nx
 from pathlib import Path
-from nnviz.entities import NNGraph
 from nnviz import inspection, drawing
+from nnviz.entities import NNGraph
 from typing import List, Tuple, Optional
 
 

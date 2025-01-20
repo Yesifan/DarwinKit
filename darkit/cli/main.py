@@ -3,6 +3,7 @@ import signal
 import click
 from darkit import __version__
 from .src.pid import read_pid, save_pid, remove_pid_file
+from .spiking import command as spiking_command
 
 
 @click.group()
@@ -10,6 +11,8 @@ from .src.pid import read_pid, save_pid, remove_pid_file
 def cli():
     pass
 
+
+cli.add_command(spiking_command)
 
 try:
     from darkit.lm.command import command as lm_command
