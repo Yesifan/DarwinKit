@@ -31,7 +31,7 @@
 	</a>
 	<ul class="flex flex-1 gap-2">
 		{@render item(m.h_doc(), '/docs', '/docs')}
-		{@render item(m.h_network(), '/flow', '/flow')}
+		{@render item(m.toolkit(), '/toolkit/flow', '/toolkit')}
 		{@render item('LM', '/lm/train', '/lm')}
 	</ul>
 	<I18nButton class="mr-4" />
