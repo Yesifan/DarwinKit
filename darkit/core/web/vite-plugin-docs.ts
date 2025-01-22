@@ -93,21 +93,29 @@ const removeDocsCache = async (target: string) => {
 const transformMarkdown = async (sourceDir: string) => {
 	const content = await fs.readFile(sourceDir, 'utf-8');
 	const staticFiles: [string, string][] = [];
+	// 匹配所有非 md 文件的引用
 	// 将 markdown 文件中的本地静态资源引用转换为 web 路径， 并将本地文件路径读取出来
-	const updatedContent = content.replace(/!\[.*?\]\((\/.*?)(?:\s".*?")?\)/g, (match, p1) => {
-		const staticFile = path.isAbsolute(p1) ? path.join(ROOT_PATH, p1) : path.join(sourceDir, p1);
-		// 如果是网络文件则跳过
-		if (p1.startsWith('http')) return match;
-		if (isPathIn(staticFile, ROOT_STATIC_PATH)) {
-			const relativePath = path.relative(ROOT_STATIC_PATH, staticFile);
-			staticFiles.push([staticFile, relativePath]);
-			return match.replace(p1, `/docs/${relativePath}`);
-		} else {
-			throw new Error(
-				`Docs static file ${staticFile} must be in ${ROOT_STATIC_PATH}, but it is not.`
-			);
+	// 匹配 markdown 的引用语法和 html 的 a 标签
+	const updatedContent = content.replace(
+		/<a\s+[^>]*href=["']([^"']+)["']|(?!.*\.md)\[.*?\]\((.+\..+)\)/g,
+		(match, p1, p2) => {
+			const url = p1 || p2;
+			const staticFile = path.isAbsolute(url)
+				? path.join(ROOT_PATH, url)
+				: path.join(sourceDir, url);
+			// 如果是网络文件则跳过
+			if (url.startsWith('http')) return match;
+			if (isPathIn(staticFile, ROOT_STATIC_PATH)) {
+				const relativePath = path.relative(ROOT_STATIC_PATH, staticFile);
+				staticFiles.push([staticFile, relativePath]);
+				return match.replace(url, `/docs/${relativePath}`);
+			} else {
+				throw new Error(
+					`Docs static file ${staticFile} must be in ${ROOT_STATIC_PATH}, but it is not.`
+				);
+			}
 		}
-	});
+	);
 	// 将 markdown 文件中的链接路径转换为 web 路径
 	const finalContent = updatedContent.replace(/\[.*?\]\((.*?).md\)/g, (match, p1) => {
 		// 如果是网络文件则跳过
