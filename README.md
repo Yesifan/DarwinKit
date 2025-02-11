@@ -25,7 +25,7 @@ pip install -r requirements.txt
 ### Start the Project
 - Start the fastapi server
   ```bash
-  uvicorn core.server:app --reload --host 0.0.0.0
+  uvicorn darkit.core.server:app --reload --host 0.0.0.0
   ```
 - Start the Svelte web
   ```bash
@@ -51,7 +51,7 @@ python -m unittest discover
 python -m unittest test.model
 ```
 
-### Packaging 
+### Packaging
 To create a distribution package (for uploading to PyPI or providing to users for installation), follow these steps:
 1. Check if the version number in the `DarwinKit/__init__.py` file is correct.
 2. Run `DarwinKit create-options` to update model information.
@@ -78,4 +78,3 @@ This project includes third-party software. Below are the attributions and licen
 Shitao Xiao, Li Du, Guoqi Li, Jiajun Zhang
 - SpikingLlama
   - Copyright (c), Zhiyuan Zhu, Qian Zheng
-

@@ -34,10 +34,7 @@ class TestSpikeGPT(unittest.TestCase):
         tconf = TrainerConfig(
             name=self.model_name,
             device=device,
-            max_epochs=1,
-            epoch_length_fixed=100,
             batch_size=2,
-            save_step_interval=1,
         )
         with Trainer(model, tokenizer=tokenizer, config=tconf) as trainer:
             trainer.train(train_dataset=wikitext_train)
